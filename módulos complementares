@@ -1,0 +1,515 @@
+package br.com.ecommerce.excecoes;
+
+public class LogisticaException extends Exception {
+    public LogisticaException(String mensagem) {
+        super(mensagem);
+    }
+
+    public LogisticaException(String mensagem, Throwable causa) {
+        super(mensagem, causa);
+    }
+}
+
+package br.com.ecommerce.excecoes;
+
+public class EstoqueInvalidoException extends RuntimeException {
+    public EstoqueInvalidoException(String mensagem) {
+        super(mensagem);
+    }
+}
+
+package br.com.ecommerce.logistica;
+
+import br.com.ecommerce.excecoes.LogisticaException;
+
+public abstract class ItemLogistico {
+    
+    private static long contadorGlobalItens;
+
+    static {
+        contadorGlobalItens = 1000L;
+        System.out.println("[JVM] Bloco estático executado: Contador global de itens logísticos inicializado.");
+    }
+
+    private String codigoEtiqueta;
+    protected double pesoKg;
+    double cubagemM3;
+    
+    private boolean despachado;
+
+    public ItemLogistico(String codigoEtiqueta, double pesoKg, double cubagemM3) throws LogisticaException {
+        if (codigoEtiqueta == null || codigoEtiqueta.trim().length() < 5) {
+            throw new LogisticaException("Erro de validação: Código de etiqueta nulo ou com menos de 5 caracteres.");
+        }
+        this.codigoEtiqueta = codigoEtiqueta;
+        this.pesoKg = pesoKg;
+        this.cubagemM3 = cubagemM3;
+        this.despachado = false;
+        
+        contadorGlobalItens++;
+    }
+
+    public abstract double calcularFreteBase();
+
+    public boolean isDespachado() {
+        return despachado;
+    }
+
+    public void setDespachado(boolean despachado) {
+        this.despachado = despachado;
+    }
+
+    public String getCodigoEtiqueta() {
+        return codigoEtiqueta;
+    }
+
+    public double getPesoKg() {
+        return pesoKg;
+    }
+
+    public double getCubagemM3() {
+        return cubagemM3;
+    }
+
+    public static long getContadorGlobalItens() {
+        return contadorGlobalItens;
+    }
+
+    @Override
+    public String toString() {
+        return String.format("Etiqueta: %s | Peso: %.2f kg | Cubagem: %.4f m³ | Despachado: %b", 
+                codigoEtiqueta, pesoKg, cubagemM3, despachado);
+    }
+}
+
+package br.com.ecommerce.logistica;
+
+import br.com.ecommerce.excecoes.LogisticaException;
+import br.com.ecommerce.excecoes.EstoqueInvalidoException;
+
+import java.util.Date;
+
+public class PacoteExpresso extends ItemLogistico {
+
+    private boolean entregaNoMesmoDia;
+    private java.sql.Date dataRegistroBanco;
+
+    public PacoteExpresso(String codigoEtiqueta, double pesoKg, double cubagemM3, boolean entregaNoMesmoDia) throws LogisticaException {
+        super(codigoEtiqueta, pesoKg, cubagemM3);
+        
+        if (pesoKg <= 0) {
+            throw new EstoqueInvalidoException("Erro operacional: O peso do pacote expresso deve ser maior que zero.");
+        }
+        
+        this.entregaNoMesmoDia = entregaNoMesmoDia;
+        this.dataRegistroBanco = new java.sql.Date(new Date().getTime());
+    }
+
+    public PacoteExpresso(String codigoEtiqueta, double pesoKg) throws LogisticaException {
+        this(codigoEtiqueta, pesoKg, 0.05, false);
+    }
+
+    @Override
+    public double calcularFreteBase() {
+        double taxaBase = super.pesoKg * 18.50 + super.cubagemM3 * 45.0;
+        return entregaNoMesmoDia ? taxaBase * 1.5 : taxaBase;
+    }
+
+    public boolean isEntregaNoMesmoDia() {
+        return entregaNoMesmoDia;
+    }
+
+    @Override
+    public String toString() {
+        return super.toString() + String.format(" | Tipo: Expresso | SameDay: %b | Data SQL: %s", 
+                entregaNoMesmoDia, dataRegistroBanco.toString());
+    }
+}
+
+package br.com.ecommerce.app;
+
+import br.com.ecommerce.excecoes.LogisticaException;
+import br.com.ecommerce.excecoes.EstoqueInvalidoException;
+import br.com.ecommerce.logistica.PacoteExpresso;
+
+public class DemonstradorBloco1App {
+
+    public static void main(String[] args) {
+        System.out.println("=== DEMONSTRAÇÃO BLOCO 1: EXCEÇÕES E ENGENHARIA DE CLASSES ===");
+
+        try {
+            System.out.println("\nTentando instanciar pacote com dados inválidos (peso negativo)...");
+            PacoteExpresso pacoteErro = new PacoteExpresso("ETQ-999", -2.5, 0.1, true);
+        } catch (LogisticaException | EstoqueInvalidoException e) {
+            System.out.println("[MULTI-CATCH CAPTURADO]: " + e.getMessage());
+        }
+
+        try {
+            PacoteExpresso pacoteValido = new PacoteExpresso("ETQ-12345", 3.2, 0.08, true);
+            System.out.println("\nPacote criado com sucesso: " + pacoteValido);
+            System.out.println("Frete Base Calculado: R$ " + String.format("%.2f", pacoteValido.calcularFreteBase()));
+        } catch (LogisticaException | EstoqueInvalidoException e) {
+            System.out.println("Erro inesperado: " + e.getMessage());
+        }
+
+        System.out.println("\n--- Testando Precedência de Return vs Finally ---");
+        String resultadoTeste = testarPrecedenciaFinally();
+        System.out.println("Valor retornado ao método main: " + resultadoTeste);
+
+        System.out.println("\n--- Testando Try-Finally sem Catch ---");
+        executarRotinaComGarantiaDeRecursos();
+    }
+
+    public static String testarPrecedenciaFinally() {
+        try {
+            System.out.println(">> Bloco TRY: Executando lógica e preparando return.");
+            return "VALOR_RETORNADO_ORIGINAL";
+        } finally {
+            System.out.println(">> Bloco FINALLY: Executado ANTES da efetivação do retorno ao chamador.");
+        }
+    }
+
+    public static void executarRotinaComGarantiaDeRecursos() {
+        System.out.println(">> Abrindo canal exclusivo com o terminal de cargas...");
+        try {
+            System.out.println(">> Executando operações críticas de hardware de esteira...");
+        } finally {
+            System.out.println(">> Bloco FINALLY sem Catch: Canal de hardware liberado com segurança.");
+        }
+    }
+}
+
+package br.com.ecommerce.logistica;
+
+public enum StatusRastreio {
+    PENDENTE(5, false),
+    EM_TRANSITO(3, false),
+    SAIU_PARA_ENTREGA(1, true),
+    ENTREGUE(0, true),
+    EXTRAVIADO(0, false);
+
+    private final int prazoDiasUteis;
+    private final boolean requerAssinatura;
+
+    StatusRastreio(int prazoDiasUteis, boolean requerAssinatura) {
+        this.prazoDiasUteis = prazoDiasUteis;
+        this.requerAssinatura = requerAssinatura;
+    }
+
+    public int getPrazoDiasUteis() {
+        return prazoDiasUteis;
+    }
+
+    public boolean isRequerAssinatura() {
+        return requerAssinatura;
+    }
+
+    public boolean isFinalizado() {
+        return this == ENTREGUE || this == EXTRAVIADO;
+    }
+}
+
+package br.com.ecommerce.anotacoes;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Target({ElementType.TYPE, ElementType.METHOD})
+@Retention(RetentionPolicy.RUNTIME)
+public @interface AuditoriaLogistica {
+    String nivelCriticidade() default "PADRAO";
+    boolean registrarDataHora() default true;
+}
+
+package br.com.ecommerce.util;
+
+import br.com.ecommerce.anotacoes.AuditoriaLogistica;
+
+@AuditoriaLogistica(nivelCriticidade = "ALTO", registrarDataHora = true)
+public class FilaArmazenamento<T> {
+
+    private static class No<E> {
+        E dado;
+        No<E> proximo;
+
+        No(E dado) {
+            this.dado = dado;
+            this.proximo = null;
+        }
+    }
+
+    private No<T> inicio;
+    private No<T> fim;
+    private int tamanho;
+
+    public FilaArmazenamento() {
+        this.inicio = null;
+        this.fim = null;
+        this.tamanho = 0;
+    }
+
+    public void enfileirar(T elemento) {
+        No<T> novoNo = new No<>(elemento);
+        if (estaVazia()) {
+            inicio = novoNo;
+        } else {
+            fim.proximo = novoNo;
+        }
+        fim = novoNo;
+        tamanho++;
+    }
+
+    public T desenfileirar() {
+        if (estaVazia()) {
+            return null;
+        }
+        T dadoRemovido = inicio.dado;
+        inicio = inicio.proximo;
+        tamanho--;
+        if (inicio == null) {
+            fim = null;
+        }
+        return dadoRemovido;
+    }
+
+    public int getTamanho() {
+        return tamanho;
+    }
+
+    public boolean estaVazia() {
+        return tamanho == 0;
+    }
+}
+
+package br.com.ecommerce.util;
+
+import br.com.ecommerce.anotacoes.AuditoriaLogistica;
+import br.com.ecommerce.logistica.StatusRastreio;
+
+public class CalculadoraLogistica {
+
+    @AuditoriaLogistica(nivelCriticidade = "CRITICO")
+    public static double calcularCustoFinal(double valorBase, double... taxasAdicionais) {
+        double total = valorBase;
+        for (double taxa : taxasAdicionais) {
+            total += taxa;
+        }
+        return total;
+    }
+
+    public static String formatarResumoOperacao(String codigo, StatusRastreio status, double valorFinal) {
+        return String.format("Carga [%s] | Status Atual: %s | Custo Consolidado: R$ %.2f", 
+                codigo, status.name(), valorFinal);
+    }
+}
+
+package br.com.ecommerce.app;
+
+import br.com.ecommerce.logistica.PacoteExpresso;
+import br.com.ecommerce.logistica.StatusRastreio;
+import br.com.ecommerce.util.FilaArmazenamento;
+import br.com.ecommerce.util.CalculadoraLogistica;
+
+import static br.com.ecommerce.logistica.StatusRastreio.*;
+import static br.com.ecommerce.util.CalculadoraLogistica.calcularCustoFinal;
+import static br.com.ecommerce.util.CalculadoraLogistica.formatarResumoOperacao;
+
+public class DemonstradorBloco2App {
+
+    public static void main(String[] args) {
+        System.out.println("\n=== DEMONSTRAÇÃO BLOCO 2: ENUMS, GENERICS, VARARGS E ANOTAÇÕES ===");
+
+        try {
+            FilaArmazenamento<PacoteExpresso> fila = new FilaArmazenamento<>();
+            fila.enfileirar(new PacoteExpresso("EXP-001", 4.5, 0.1, true));
+            fila.enfileirar(new PacoteExpresso("EXP-002", 2.0, 0.04, false));
+            fila.enfileirar(new PacoteExpresso("EXP-003", 7.8, 0.2, true));
+
+            System.out.println("Tamanho da Fila de Armazenamento: " + fila.getTamanho());
+
+            while (!fila.estaVazia()) {
+                PacoteExpresso pacote = fila.desenfileirar();
+                double base = pacote.calcularFreteBase();
+                
+                double custoTotal = calcularCustoFinal(base, 12.00, 4.50, 2.30);
+                
+                StatusRastreio statusExemplo = SAIU_PARA_ENTREGA;
+                
+                String resumo = formatarResumoOperacao(pacote.getCodigoEtiqueta(), statusExemplo, custoTotal);
+                System.out.println(resumo);
+                System.out.println(" -> Status Finalizado? " + statusExemplo.isFinalizado() + 
+                                   " | Prazo (dias úteis): " + statusExemplo.getPrazoDiasUteis());
+            }
+
+        } catch (Exception e) {
+            System.out.println("Erro na execução do Bloco 2: " + e.getMessage());
+        }
+    }
+}
+
+package br.com.ecommerce.app;
+
+import br.com.ecommerce.excecoes.LogisticaException;
+import br.com.ecommerce.logistica.PacoteExpresso;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.OptionalDouble;
+import java.util.stream.Collectors;
+
+public class ProcessadorStreamsApp {
+
+    public static void main(String[] args) {
+        System.out.println("\n=== DEMONSTRAÇÃO BLOCO 3: PROGRAMAÇÃO FUNCIONAL E STREAMS ===");
+
+        List<PacoteExpresso> listaPacotes = new ArrayList<>();
+        try {
+            listaPacotes.add(new PacoteExpresso("PAC-101", 12.5, 0.3, true));
+            listaPacotes.add(new PacoteExpresso("PAC-102", 3.0, 0.05, false));
+            listaPacotes.add(new PacoteExpresso("PAC-103", 8.2, 0.15, true));
+            listaPacotes.add(new PacoteExpresso("PAC-104", 1.5, 0.02, false));
+            listaPacotes.add(new PacoteExpresso("PAC-105", 22.0, 0.5, true));
+        } catch (LogisticaException e) {
+            System.out.println("Erro ao instanciar lotes: " + e.getMessage());
+        }
+
+        System.out.println("\n[Ordenação 1] Usando Classe Interna Anônima (Comparator):");
+        Collections.sort(listaPacotes, new Comparator<PacoteExpresso>() {
+            @Override
+            public int compare(PacoteExpresso p1, PacoteExpresso p2) {
+                return Double.compare(p1.calcularFreteBase(), p2.calcularFreteBase());
+            }
+        });
+        listaPacotes.forEach(p -> System.out.println(p.getCodigoEtiqueta() + " -> Frete: R$ " + String.format("%.2f", p.calcularFreteBase())));
+
+        System.out.println("\n[Ordenação 2] Refatorado para Expressão Lambda:");
+        listaPacotes.sort((p1, p2) -> Double.compare(p2.calcularFreteBase(), p1.calcularFreteBase()));
+        listaPacotes.forEach(p -> System.out.println(p.getCodigoEtiqueta() + " -> Frete: R$ " + String.format("%.2f", p.calcularFreteBase())));
+
+        System.out.println("\n--- Pipeline de Métricas e Processamento Funcional ---");
+
+        List<PacoteExpresso> mesmosDias = listaPacotes.stream()
+                .filter(PacoteExpresso::isEntregaNoMesmoDia)
+                .collect(Collectors.toList());
+        System.out.println("Quantidade de pacotes com entrega no mesmo dia: " + mesmosDias.size());
+
+        OptionalDouble mediaFrete = listaPacotes.stream()
+                .mapToDouble(PacoteExpresso::calcularFreteBase)
+                .average();
+        
+        if (mediaFrete.isPresent()) {
+            System.out.println("Média de frete do lote: R$ " + String.format("%.2f", mediaFrete.getAsDouble()));
+        }
+
+        long acimaDe100 = listaPacotes.stream()
+                .filter(p -> p.calcularFreteBase() > 100.0)
+                .count();
+        System.out.println("Total de pacotes com frete superior a R$ 100,00: " + acimaDe100);
+
+        listaPacotes.stream()
+                .min(Comparator.comparingDouble(PacoteExpresso::calcularFreteBase))
+                .ifPresent(pMaisBarato -> System.out.println("Pacote mais econômico do lote: " + 
+                        pMaisBarato.getCodigoEtiqueta() + " (R$ " + String.format("%.2f", pMaisBarato.calcularFreteBase()) + ")"));
+    }
+}
+
+package br.com.ecommerce.util;
+
+import br.com.ecommerce.anotacoes.AuditoriaLogistica;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+
+public class AuditorMetadadosReflection {
+
+    public static void inspecionarClasse(Class<?> clazz) {
+        System.out.println("\n==================================================");
+        System.out.println("INSPECIONANDO CLASSE: " + clazz.getName());
+        System.out.println("Superclasse Direta: " + clazz.getSuperclass().getName());
+        System.out.println("==================================================");
+
+        if (clazz.isAnnotationPresent(AuditoriaLogistica.class)) {
+            AuditoriaLogistica auditoria = clazz.getAnnotation(AuditoriaLogistica.class);
+            System.out.println("[ANOTAÇÃO DETECTADA] @AuditoriaLogistica");
+            System.out.println(" -> Nível de Criticidade: " + auditoria.nivelCriticidade());
+            System.out.println(" -> Registrar Data/Hora: " + auditoria.registrarDataHora());
+        } else {
+            System.out.println("[AVISO] A classe não possui a anotação @AuditoriaLogistica.");
+        }
+
+        System.out.println("\n--- Atributos Declarados (Fields) ---");
+        Field[] campos = clazz.getDeclaredFields();
+        for (Field campo : campos) {
+            System.out.println(" * " + campo.getName() + " [" + campo.getType().getSimpleName() + "]");
+        }
+
+        System.out.println("\n--- Métodos Declarados Próprios ---");
+        Method[] metodos = clazz.getDeclaredMethods();
+        int contadorMetodosProprios = 0;
+        for (Method metodo : metodos) {
+            contadorMetodosProprios++;
+            System.out.println(" * " + metodo.getName() + " (Retorno: " + metodo.getReturnType().getSimpleName() + ")");
+        }
+        System.out.println("Total de métodos encontrados na classe: " + contadorMetodosProprios);
+    }
+}
+
+package br.com.ecommerce.app;
+
+import br.com.ecommerce.logistica.PacoteExpresso;
+import br.com.ecommerce.util.FilaArmazenamento;
+import br.com.ecommerce.util.AuditorMetadadosReflection;
+
+public class DemonstradorBloco4App {
+
+    public static void main(String[] args) {
+        System.out.println("\n=== DEMONSTRAÇÃO BLOCO 4: MEMÓRIA, WRAPPERS E REFLECTION ===");
+
+        System.out.println("\n--- 1. Gerenciamento de Memória: Pool de Strings ---");
+        String s1 = "LOGISTICA_JAVA";
+        String s2 = "LOGISTICA_JAVA";
+        String s3 = new String("LOGISTICA_JAVA");
+
+        System.out.println("s1 == s2 (Pool de Literais): " + (s1 == s2));
+        System.out.println("s1 == s3 (Literal vs new String()): " + (s1 == s3));
+        System.out.println("s1.equals(s3) (Comparação de Conteúdo): " + s1.equals(s3));
+
+        System.out.println("\n--- 2. Cache de Wrappers (Integer Pool) ---");
+        Integer numA = 100;
+        Integer numB = 100;
+        Integer numC = 500;
+        Integer numD = 500;
+
+        System.out.println("100 == 100 (Dentro do Cache [-128, 127]): " + (numA == numB));
+        System.out.println("500 == 500 (Fora do Cache): " + (numC == numD));
+        System.out.println("500.equals(500) com .equals(): " + numC.equals(numD));
+
+        System.out.println("\n--- 3. Montagem Eficiente com StringBuilder ---");
+        StringBuilder manifesto = new StringBuilder("MANIFESTO DE CARGA:\n");
+        for (int i = 1; i <= 3; i++) {
+            manifesto.append(" - Item ID: ").append(100 + i).append(" | Status: Liberado\n");
+        }
+        System.out.print(manifesto.toString());
+
+        System.out.println("\n--- 4. Wrappers, Character e Constantes Especiais ---");
+        char simbolo = 'X';
+        System.out.println("Verificando caractere 'X':");
+        System.out.println("É dígito? " + Character.isDigit(simbolo));
+        System.out.println("É maiúscula? " + Character.isUpperCase(simbolo));
+
+        String valorTexto = "2026";
+        int anoConvertido = Integer.parseInt(valorTexto);
+        System.out.println("Conversão via Integer.parseInt(): " + (anoConvertido + 10));
+
+        System.out.println("Constante Float.NaN: " + Float.NaN);
+        System.out.println("Constante Float.POSITIVE_INFINITY: " + Float.POSITIVE_INFINITY);
+
+        System.out.println("\n--- 5. Acionando Auditoria Reflexiva ---");
+        AuditorMetadadosReflection.inspecionarClasse(FilaArmazenamento.class);
+        AuditorMetadadosReflection.inspecionarClasse(PacoteExpresso.class);
+    }
+}
+
